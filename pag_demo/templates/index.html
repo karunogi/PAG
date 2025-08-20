@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" action="{{ url_for('pages.setup') }}" class="space-y-6" id="schema-form">
+  <div class="grid md:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">OpenAI API Key</label>
+      <input name="api_key" type="password" placeholder="sk-..." value="{{ api_key }}" class="w-full border rounded-lg p-2">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">LLM Model</label>
+      <input name="llm_model" type="text" value="{{ llm_model }}" class="w-full border rounded-lg p-2">
+      <p class="text-xs text-slate-500 mt-1">e.g., gpt-4o, gpt-4o-mini</p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Embedding Model</label>
+      <input name="emb_model" type="text" value="{{ emb_model }}" class="w-full border rounded-lg p-2">
+      <p class="text-xs text-slate-500 mt-1">e.g., text-embedding-3-small</p>
+    </div>
+  </div>
+
+  <!-- Toggle (click to show/hide the config panel) -->
+  <button type="button" id="config-toggle"
+          class="text-sm underline text-slate-700 hover:text-slate-900">
+    <span data-arrow>▸</span> PAG Config Settings
+  </button>
+
+  <!-- === PAG Options === -->
+  <div id="config-panel" class="hidden space-y-4 mt-3">
+    <div class="mt-6 p-4 rounded-xl border bg-slate-50">
+      <h3 class="font-semibold mb-3">PAG Options</h3>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium mb-1">top_k_predictions</label>
+          <input name="pag_top_k_predictions" type="number" min="1" value="{{ pag_cfg.top_k_predictions }}" class="w-full border rounded-lg p-2">
+          <p class="text-xs text-slate-500 mt-1">Number of labels to keep from predictor outputs.</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">num_schema_categorical</label>
+          <input name="pag_num_schema_categorical" type="number" min="0" value="{{ pag_cfg.num_schema_categorical }}" class="w-full border rounded-lg p-2">
+          <p class="text-xs text-slate-500 mt-1">Max categorical features to align.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="pag_short_knowledge" name="pag_short_knowledge" type="checkbox" class="h-4 w-4"
+                 {% if pag_cfg.short_knowledge %}checked{% endif %}>
+          <label for="pag_short_knowledge" class="text-sm">short_knowledge</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="pag_knowledge_per_label" name="pag_knowledge_per_label" type="checkbox" class="h-4 w-4"
+                 {% if pag_cfg.knowledge_per_label %}checked{% endif %}>
+          <label for="pag_knowledge_per_label" class="text-sm">knowledge_per_label</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="pag_aggregate_with_pm" name="pag_aggregate_with_pm" type="checkbox" class="h-4 w-4"
+                 {% if pag_cfg.aggregate_with_pm %}checked{% endif %}>
+          <label for="pag_aggregate_with_pm" class="text-sm">aggregate_with_pm</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="pag_user_input_with_kg" name="pag_user_input_with_kg" type="checkbox" class="h-4 w-4"
+                 {% if pag_cfg.user_input_with_kg %}checked{% endif %}>
+          <label for="pag_user_input_with_kg" class="text-sm">user_input_with_kg</label>
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">embedding_cache_path</label>
+          <input name="pag_embedding_cache_path" type="text" value="{{ pag_cfg.embedding_cache_path }}" class="w-full border rounded-lg p-2">
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">match_cache_path</label>
+          <input name="pag_match_cache_path" type="text" value="{{ pag_cfg.match_cache_path }}" class="w-full border rounded-lg p-2">
+        </div>
+      </div>
+    </div>
+
+    <!-- === Alignment Options === -->
+    <div class="mt-4 p-4 rounded-xl border bg-slate-50">
+      <h3 class="font-semibold mb-3">Alignment Options</h3>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium mb-1">top_k_candidates</label>
+          <input name="align_top_k_candidates" type="number" min="1" value="{{ align_cfg.top_k_candidates }}" class="w-full border rounded-lg p-2">
+          <p class="text-xs text-slate-500 mt-1">How many candidates to consider per feature.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="align_use_semantic" name="align_use_semantic" type="checkbox" class="h-4 w-4"
+                 {% if align_cfg.use_semantic %}checked{% endif %}>
+          <label for="align_use_semantic" class="text-sm">use_semantic</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <button type="button" id="add-schema-btn" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm">Add Schema</button>
+      <button type="button" id="edit-schema-btn" class="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-900 text-sm">Edit/Remove Schema</button>
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" id="data-add-btn" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm">Add Data</button>
+      <button type="button" id="train-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm">Train Prediction Model</button>
+    </div>
+  </div>
+
+  <textarea name="schema_json" id="schema_json" rows="16" class="w-full border rounded-lg p-2 font-mono text-sm">{{ schema_json }}</textarea>
+  <p class="text-xs text-slate-500">Enter JSON directly or use the buttons above to edit easily. <b>dtype</b> is converted to Python types on the server.</p>
+
+  <div class="flex items-center gap-3">
+    <button class="px-4 py-2 rounded-xl bg-slate-900 text-white">Save Settings & Initialize</button>
+    <a class="px-4 py-2 rounded-xl bg-slate-200" href="{{ url_for('pages.run_page') }}">Go to Run Page</a>
+  </div>
+</form>
+
+<!-- Modal: Add/Edit/Remove Schema -->
+<div id="schema-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-3xl bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold">Schema Editor</h3>
+      <button class="text-slate-500 hover:text-slate-700" data-close>✕</button>
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button data-tab="labels" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm">Labels</button>
+      <button data-tab="feature-add" class="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-900 text-sm">Add Feature</button>
+      <button data-tab="feature-edit" class="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-900 text-sm">Edit/Remove Feature</button>
+    </div>
+
+    <!-- Labels -->
+    <div data-pane="labels">
+      <label class="block text-sm font-medium mb-1">Label list (one per line)</label>
+      <textarea rows="10" data-el="labels-input" class="w-full border rounded-lg p-2 font-mono text-sm" placeholder="e.g.)\nCommon cold\nPneumonia\nAsthma"></textarea>
+      <p class="text-xs text-slate-500 mt-1">Applies to the <code>labels</code> field in the JSON schema.</p>
+      <div class="mt-3 flex items-center justify-end gap-2">
+        <button data-act="labels-apply" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm">Apply</button>
+      </div>
+    </div>
+
+    <!-- Add Feature -->
+    <div data-pane="feature-add" class="hidden">
+      <div class="grid md:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">name</label>
+          <input data-el="f-name" class="w-full border rounded-lg p-2" placeholder="e.g., symptoms">
+          <p class="text-xs text-slate-500 mt-1">Unique feature name</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">dtype</label>
+          <select data-el="f-dtype" class="w-full border rounded-lg p-2">
+            <option value="str">str</option>
+            <option value="int">int</option>
+            <option value="float">float</option>
+            <option value="bool">bool</option>
+            <option value="list">list</option>
+          </select>
+          <p class="text-xs text-slate-500 mt-1">Input type (converted to Python types on the server)</p>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">allowed_values (optional)</label>
+          <textarea rows="4" data-el="f-allowed" class="w-full border rounded-lg p-2 font-mono text-sm" placeholder='One per line → will be converted to ["a","b",...]'></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">needs_alignment</label>
+          <select data-el="f-align" class="w-full border rounded-lg p-2">
+            <option value="true" selected>true</option>
+            <option value="false">false</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">description (optional)</label>
+          <input data-el="f-desc" class="w-full border rounded-lg p-2" placeholder="Short description">
+        </div>
+      </div>
+      <div class="mt-3 flex items-center justify-end gap-2">
+        <button data-act="feature-apply" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm">Apply</button>
+      </div>
+    </div>
+
+    <!-- Edit/Remove Feature -->
+    <div data-pane="feature-edit" class="hidden">
+      <div class="grid md:grid-cols-2 gap-3">
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">Select a feature to edit/remove</label>
+          <select data-el="fe-select" class="w-full border rounded-lg p-2"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">name</label>
+          <input data-el="fe-name" class="w-full border rounded-lg p-2">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">dtype</label>
+          <select data-el="fe-dtype" class="w-full border rounded-lg p-2">
+            <option value="str">str</option>
+            <option value="int">int</option>
+            <option value="float">float</option>
+            <option value="bool">bool</option>
+            <option value="list">list</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium mb-1">allowed_values</label>
+          <textarea rows="4" data-el="fe-allowed" class="w-full border rounded-lg p-2 font-mono text-sm"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">needs_alignment</label>
+          <select data-el="fe-align" class="w-full border rounded-lg p-2">
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">description</label>
+          <input data-el="fe-desc" class="w-full border rounded-lg p-2">
+        </div>
+      </div>
+      <div class="mt-3 flex items-center justify-end gap-2">
+        <button data-act="fe-remove" class="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-sm">Remove</button>
+        <button data-act="fe-save" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Data (Upload / Preview / Register) -->
+<div id="data-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-4xl bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold">Add Data</h3>
+      <button class="text-slate-500 hover:text-slate-700" data-close>✕</button>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <input type="file" id="data-file" accept=".csv, .xlsx, .xls, .json" class="text-sm">
+      <input type="text" id="json-key" placeholder="json_key (optional)" class="text-sm border rounded-lg p-1.5" style="min-width: 200px;">
+      <button id="data-upload" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm">Upload</button>
+      <div id="data-upload-msg" class="text-xs text-slate-500"></div>
+    </div>
+    <div class="mt-4 overflow-auto border rounded-xl">
+      <table class="min-w-full text-xs" id="preview-table"></table>
+    </div>
+    <p class="text-xs text-slate-500 mt-2">You can upload .json, .csv, and .xlsx files.
+      For JSON-type data, you need to enter the key where the data is located.
+      Inside that key, the data must be stored in a list format. Example:"key": [{"feat1": val1, "feat2": val2, ...},{"feat1": val1, "feat2": val2, ...},...].
+      <br>The last column(feature) is treated as the label. Clicking Register will auto-generate the schema.</p>
+    <div class="mt-3 flex items-center justify-end">
+      <button id="data-register" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Train Prediction Model -->
+<div id="train-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-3xl bg-white rounded-2xl shadow-xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold">Train Prediction Model</h3>
+      <button class="text-slate-500 hover:text-slate-700" data-close>✕</button>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-sm font-medium mb-1">Choose model</label>
+        <select id="train-model" class="w-full border rounded-lg p-2">
+          <option value="logreg">LogisticRegression</option>
+          <option value="rf">RandomForest</option>
+        </select>
+        <p class="text-xs text-slate-500 mt-1">Quick test with basic ML models</p>
+      </div>
+      <div class="flex items-end">
+        <button id="train-start" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm">Start Training</button>
+      </div>
+    </div>
+
+    <div class="mt-4 h-48 overflow-auto border rounded-xl p-2 bg-slate-50" id="train-log"></div>
+
+    <div class="mt-3 flex items-center justify-end">
+      <button id="train-register" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm hidden">Register Trained Model</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Common
+const schemaTA = document.getElementById('schema_json');
+function show(el){ el.classList.remove('hidden'); }
+function hide(el){ el.classList.add('hidden'); }
+
+// ===== Schema Modal =====
+const schemaModal = document.getElementById('schema-modal');
+const addBtn = document.getElementById('add-schema-btn');
+const editBtn = document.getElementById('edit-schema-btn');
+addBtn.addEventListener('click', ()=>{ openSchemaModal("labels"); });
+editBtn.addEventListener('click', ()=>{ openSchemaModal("feature-edit"); });
+
+function openSchemaModal(tab="labels"){
+  show(schemaModal);
+  selectTab(tab);
+  // Initialize labels
+  const obj = safeParse(schemaTA.value);
+  let labels = [];
+  if (Array.isArray(obj.labels)) {
+    labels = obj.labels;
+  } else if (typeof obj.labels === "string") {
+    labels = normalizeMultilineInput(obj.labels).split("\n").map(s=>s.trim()).filter(Boolean);
+  }
+  schemaModal.querySelector('[data-el="labels-input"]').value = labels.join("\n");
+
+  // Initialize feature-edit options
+  const sel = schemaModal.querySelector('[data-el="fe-select"]');
+  sel.innerHTML = "";
+  const feats = Array.isArray(obj.features)?obj.features:[];
+  feats.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.name; opt.textContent = f.name;
+    sel.appendChild(opt);
+  });
+  if (feats.length) loadFeatureIntoEdit(feats[0]);
+}
+schemaModal.addEventListener('click',(e)=>{ if (e.target.hasAttribute('data-close')) hide(schemaModal); if (e.target===schemaModal) hide(schemaModal); });
+
+function selectTab(which){
+  schemaModal.querySelectorAll('[data-pane]').forEach(el=>hide(el));
+  schemaModal.querySelector(`[data-pane="${which}"]`)?.classList.remove('hidden');
+  schemaModal.querySelectorAll('[data-tab]').forEach(b=>{
+    if (b.getAttribute('data-tab')===which) b.className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm";
+    else b.className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-900 text-sm";
+  });
+}
+schemaModal.querySelectorAll('[data-tab]').forEach(b=>{
+  b.addEventListener('click',()=>selectTab(b.getAttribute('data-tab')));
+});
+
+function safeParse(txt){ try{ return JSON.parse(txt||"{}"); }catch(_){return {features:[], labels:[]};} }
+function setSchema(obj){ schemaTA.value = JSON.stringify(obj, null, 2); }
+function normalizeMultilineInput(txt){
+  return (txt || "").replace(/\r\n/g, "\n").replace(/\\n/g, "\n");
+}
+
+// Apply labels
+schemaModal.querySelector('[data-act="labels-apply"]').addEventListener('click', ()=>{
+  const obj = safeParse(schemaTA.value);
+  const lines = schemaModal.querySelector('[data-el="labels-input"]').value.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+  obj.labels = lines;
+  if (!Array.isArray(obj.features)) obj.features=[];
+  setSchema(obj);
+  hide(schemaModal);
+});
+
+// Add feature → apply
+schemaModal.querySelector('[data-act="feature-apply"]').addEventListener('click', ()=>{
+  const obj = safeParse(schemaTA.value);
+  if (!Array.isArray(obj.features)) obj.features=[];
+  const name = schemaModal.querySelector('[data-el="f-name"]').value.trim();
+  if (!name) { alert("name is required."); return; }
+  const dtype = schemaModal.querySelector('[data-el="f-dtype"]').value;
+  const allowed = normalizeMultilineInput(
+    schemaModal.querySelector('[data-el="f-allowed"]').value
+  ).split("\n").map(s=>s.trim()).filter(Boolean);
+
+  const needs_alignment = schemaModal.querySelector('[data-el="f-align"]').value === "true";
+  const description = schemaModal.querySelector('[data-el="f-desc"]').value.trim();
+
+  const newFeat = { name, dtype, needs_alignment };
+  if (allowed.length) newFeat.allowed_values = allowed;
+  if (description) newFeat.description = description;
+
+  const idx = obj.features.findIndex(f=>f.name===name);
+  if (idx>=0) obj.features[idx] = newFeat; else obj.features.push(newFeat);
+  setSchema(obj);
+  hide(schemaModal);
+});
+
+// Edit/remove feature
+const feSelect = schemaModal.querySelector('[data-el="fe-select"]');
+feSelect?.addEventListener('change', ()=>{
+  const obj = safeParse(schemaTA.value);
+  const feats = obj.features||[];
+  const f = feats.find(x=>x.name===feSelect.value);
+  if (f) loadFeatureIntoEdit(f);
+});
+function loadFeatureIntoEdit(f){
+  schemaModal.querySelector('[data-el="fe-name"]').value = f.name || "";
+  schemaModal.querySelector('[data-el="fe-dtype"]').value = f.dtype || "str";
+
+  let rawAllowed = f.allowed_values;
+  let allowedLines = [];
+  if (Array.isArray(rawAllowed)) {
+    if (rawAllowed.length === 1 && typeof rawAllowed[0] === "string" && /\\n|\n/.test(rawAllowed[0])) {
+      allowedLines = normalizeMultilineInput(rawAllowed[0]).split("\n").map(s=>s.trim()).filter(Boolean);
+    } else {
+      allowedLines = rawAllowed.map(x => String(x).trim()).filter(Boolean);
+    }
+  } else if (typeof rawAllowed === "string") {
+    allowedLines = normalizeMultilineInput(rawAllowed).split("\n").map(s=>s.trim()).filter(Boolean);
+  }
+  schemaModal.querySelector('[data-el="fe-allowed"]').value = allowedLines.join("\n");
+
+  schemaModal.querySelector('[data-el="fe-align"]').value = (f.needs_alignment === false ? "false" : "true");
+
+  schemaModal.querySelector('[data-el="fe-desc"]').value = f.description || "";
+
+}
+schemaModal.querySelector('[data-act="fe-save"]').addEventListener('click', ()=>{
+  const obj = safeParse(schemaTA.value);
+  if (!Array.isArray(obj.features)) obj.features=[];
+  const target = feSelect.value;
+  const idx = obj.features.findIndex(f=>f.name===target);
+  if (idx<0){ alert("Target feature not found."); return; }
+  const f = {
+    name: schemaModal.querySelector('[data-el="fe-name"]').value.trim(),
+    dtype: schemaModal.querySelector('[data-el="fe-dtype"]').value,
+    allowed_values: normalizeMultilineInput(
+        schemaModal.querySelector('[data-el="fe-allowed"]').value
+      ).split("\n").map(s=>s.trim()).filter(Boolean),
+    needs_alignment: schemaModal.querySelector('[data-el="fe-align"]').value==="true",
+    description: schemaModal.querySelector('[data-el="fe-desc"]').value.trim()
+  };
+  if (!f.name){ alert("name is required."); return; }
+  obj.features[idx]=f;
+  setSchema(obj);
+  hide(schemaModal);
+});
+schemaModal.querySelector('[data-act="fe-remove"]').addEventListener('click', ()=>{
+  if (!confirm("Are you sure you want to remove this feature?")) return;
+  const obj = safeParse(schemaTA.value);
+  if (!Array.isArray(obj.features)) obj.features=[];
+  const target = feSelect.value;
+  obj.features = obj.features.filter(f=>f.name!==target);
+  setSchema(obj);
+  hide(schemaModal);
+});
+
+// ===== Data Modal =====
+const dataModal = document.getElementById('data-modal');
+document.getElementById('data-add-btn').addEventListener('click', ()=>show(dataModal));
+dataModal.addEventListener('click',(e)=>{ if (e.target.hasAttribute('data-close')||e.target===dataModal) hide(dataModal); });
+
+const dataFile = document.getElementById('data-file');
+const jsonKeyInput = document.getElementById('json-key');
+const uploadBtn = document.getElementById('data-upload');
+const uploadMsg = document.getElementById('data-upload-msg');
+const previewTable = document.getElementById('preview-table');
+uploadBtn.addEventListener('click', async ()=>{
+  if (!dataFile.files || !dataFile.files[0]) { alert("Please choose a file."); return; }
+  const fd = new FormData();
+  fd.append("file", dataFile.files[0]);
+  fd.append("json_key", (jsonKeyInput.value || "").trim());
+
+  uploadMsg.textContent = "Uploading...";
+  const r = await fetch("{{ url_for('data.upload_data') }}", {method:"POST", body:fd});
+  const j = await r.json();
+  if (!j.ok){ uploadMsg.textContent = j.error || "Upload failed"; return; }
+
+  const total = (j.total_rows ?? 0).toLocaleString();
+  uploadMsg.textContent = `Uploaded · Total ${total} rows`;
+
+  renderPreview(previewTable, j.columns, j.preview);
+});
+
+function renderPreview(tbl, cols, rows){
+  tbl.innerHTML = "";
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  cols.forEach(c=>{
+    const th=document.createElement('th'); th.textContent=c; th.className="border px-2 py-1 bg-white sticky top-0";
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  const tbody = document.createElement('tbody');
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    cols.forEach(c=>{
+      const td=document.createElement('td'); td.textContent = r[c]; td.className="border px-2 py-1";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(thead); tbl.appendChild(tbody);
+}
+
+document.getElementById('data-register').addEventListener('click', async ()=>{
+  const r = await fetch("{{ url_for('data.register_data') }}", {method:"POST"});
+  const j = await r.json();
+  if (!j.ok){ alert(j.error||"Registration failed"); return; }
+  schemaTA.value = JSON.stringify(j.schema, null, 2);
+  hide(dataModal);
+});
+
+// ===== Train Modal =====
+const trainModal = document.getElementById('train-modal');
+document.getElementById('train-btn').addEventListener('click', ()=>show(trainModal));
+trainModal.addEventListener('click',(e)=>{ if (e.target.hasAttribute('data-close')||e.target===trainModal) hide(trainModal); });
+
+const trainModelSel = document.getElementById('train-model');
+const trainStart = document.getElementById('train-start');
+const trainLog = document.getElementById('train-log');
+const trainRegister = document.getElementById('train-register');
+
+trainStart.addEventListener('click', async ()=>{
+  trainLog.textContent = "";
+  trainRegister.classList.add('hidden');
+  const payload = { model_type: trainModelSel.value, schema_json: schemaTA.value };
+  const r = await fetch("{{ url_for('training.train_start') }}", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+  const j = await r.json();
+  if (!j.ok){ trainLog.textContent = j.error || "Failed to start"; return; }
+  const es = new EventSource(`{{ url_for('training.train_stream') }}?token=${encodeURIComponent(j.token)}`);
+  es.onmessage = (e)=>{
+    try{
+      const data = JSON.parse(e.data);
+      if (data.type==="log"){
+        const p=document.createElement('div'); p.textContent=data.msg; trainLog.appendChild(p); trainLog.scrollTop=trainLog.scrollHeight;
+      } else if (data.type==="final"){
+        const p=document.createElement('div'); p.textContent=`Training complete (acc=${data.acc.toFixed(4)})`; trainLog.appendChild(p);
+        trainRegister.classList.remove('hidden');
+        es.close();
+      }
+    }catch(err){ console.warn("parse", e.data); }
+  };
+  es.onerror = ()=>{ const p=document.createElement('div'); p.textContent="Stream closed"; trainLog.appendChild(p); es.close(); };
+});
+
+trainRegister.addEventListener('click', async ()=>{
+  const r = await fetch("{{ url_for('training.register_trained_model') }}", {method:"POST"});
+  const j = await r.json();
+  if (!j.ok){ alert(j.error||"Registration failed"); return; }
+  alert("Prediction model registered: " + j.model_name + "\\nClick 'Save Settings' and then use it on the Run page.");
+  hide(trainModal);
+});
+
+  // --- PAG Config collapsible toggle ---
+  const cfgToggle = document.getElementById('config-toggle');
+  const cfgPanel  = document.getElementById('config-panel');
+
+  // optional: remember last open/close state across reloads
+  const LS_KEY = 'pag_cfg_open';
+  const saved  = localStorage.getItem(LS_KEY);
+  if (saved === '1') {
+    cfgPanel.classList.remove('hidden');
+    cfgToggle.querySelector('[data-arrow]').textContent = '▾';
+  }
+
+  cfgToggle.addEventListener('click', () => {
+    cfgPanel.classList.toggle('hidden');
+    const open = !cfgPanel.classList.contains('hidden');
+    cfgToggle.querySelector('[data-arrow]').textContent = open ? '▾' : '▸';
+    localStorage.setItem(LS_KEY, open ? '1' : '0');
+  });
+
+</script>
+{% endblock %}

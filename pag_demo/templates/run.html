@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-4">
+  <div class="p-4 bg-slate-100 rounded-xl">
+    <div class="grid md:grid-cols-3 gap-4">
+      <div>
+        <div class="text-xs text-slate-500">LLM</div>
+        <div class="font-medium">{{ llm_model }}</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500">Embedding</div>
+        <div class="font-medium">{{ emb_model }}</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500">Labels</div>
+        <div class="font-medium">{{ diseases_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <form id="run-form" class="space-y-3">
+    <label class="block text-sm font-medium">User input</label>
+    <textarea id="user_input" rows="6" class="w-full border rounded-lg p-3" placeholder="e.g., enter the patient's narrative text.">{{ demo_user_input }}</textarea>
+    <div class="flex items-center gap-3">
+      <button type="button" id="start-btn" class="px-4 py-2 rounded-xl bg-slate-900 text-white">Start</button>
+      <button type="button" id="clear-btn" class="px-4 py-2 rounded-xl bg-slate-200">Clear</button>
+    </div>
+  </form>
+
+  <!-- Live panel -->
+  <div id="live-panel" class="hidden rounded-2xl border shadow bg-white p-4 space-y-4">
+    <!-- Top: status badges + spinner -->
+    <div class="flex items-start justify-between gap-4">
+      <div class="flex-1">
+        <div class="text-xs text-slate-500 mb-2">Pipeline status</div>
+        <div id="status-row" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div id="panel-status" class="min-w-[180px] flex items-center justify-end gap-2"></div>
+    </div>
+
+    <!-- Bottom: most recent completed step -->
+    <div>
+      <div class="text-xs text-slate-500 mb-2">Per-step output</div>
+      <div class="p-3 rounded-xl border bg-white">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-semibold text-slate-700">
+            <span id="result-title">-</span>
+          </div>
+        </div>
+        <pre id="result-content" class="text-xs whitespace-pre-wrap mt-2 bg-slate-50 p-2 rounded border overflow-auto" style="max-height: 280px">-</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div id="history" class="mt-2 space-y-3 hidden"></div>
+
+  <!-- Final -->
+  <div id="final" class="mt-2 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 hidden">
+    <div class="flex items-center justify-between">
+      <div class="text-sm text-emerald-800">Final Result</div>
+      <button id="history-btn" class="text-xs underline text-emerald-700 hidden">history...</button>
+    </div>
+    <div class="mt-2">
+      <div class="text-xs text-slate-500">Aggregate Label</div>
+      <div id="final-label" class="font-semibold"></div>
+    </div>
+    <div class="mt-3">
+      <div class="text-xs text-slate-500">Refine Rationale</div>
+      <pre id="final-rationale" class="whitespace-pre-wrap text-sm"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const livePanel = document.getElementById('live-panel');
+const statusRow = document.getElementById('status-row');
+const panelStatus = document.getElementById('panel-status');
+const resultTitle = document.getElementById('result-title');
+const resultContent = document.getElementById('result-content');
+
+const finalBox  = document.getElementById('final');
+const finalLabel = document.getElementById('final-label');
+const finalRationale = document.getElementById('final-rationale');
+const historyBtn = document.getElementById('history-btn');
+const historyBox = document.getElementById('history');
+
+const startBtn = document.getElementById('start-btn');
+const clearBtn = document.getElementById('clear-btn');
+const userInputEl = document.getElementById('user_input');
+
+let es = null;
+let logs = [];
+let panelTimer = null;
+
+const STEPS = ["extract", "align", "predict", "knowledge", "refine", "aggregate"];
+let stepState = {};
+let currentRunningStep = null;
+let lastCompletedStep = null;
+let lastCompletedOutput = null;
+
+function spinner(label) {
+  const wrap = document.createElement('div');
+  wrap.className = "flex items-center gap-2";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "animate-spin h-5 w-5 text-slate-400");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.innerHTML = '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>';
+  const txt = document.createElement('div');
+  txt.className = "text-xs text-slate-500";
+  txt.innerText = label ? `${label} in progress...` : "In progress...";
+  wrap.appendChild(svg);
+  wrap.appendChild(txt);
+  return wrap;
+}
+
+function badge(label, state) {
+  const colors = {
+    waiting: "bg-slate-100 text-slate-600 border-slate-200",
+    running: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    done:    "bg-emerald-50 text-emerald-700 border-emerald-200"
+  };
+  const icon = { waiting: "⏳", running: "⏱️", done: "✅" };
+  const div = document.createElement('div');
+  div.className = `px-3 py-1 rounded-full text-xs border ${colors[state]}`;
+  div.textContent = `${icon[state]} ${label}`;
+  return div;
+}
+
+function renderStatusRow() {
+  statusRow.innerHTML = "";
+  const labelMap = {extract:"extract",align:"align",predict:"predict",knowledge:"knowledge",refine:"refine",aggregate:"aggregate"};
+  STEPS.forEach(s => statusRow.appendChild(badge(labelMap[s], stepState[s])));
+}
+
+function renderPanelStatus() {
+  panelStatus.innerHTML = "";
+  if (currentRunningStep) {
+    panelStatus.appendChild(spinner(currentRunningStep));
+  }
+}
+
+function renderResultPane() {
+  if (!lastCompletedStep) {
+    resultTitle.textContent = currentRunningStep || "-";
+    resultContent.textContent = "(none yet)";
+    return;
+  }
+  resultTitle.textContent = lastCompletedStep;
+  const out = lastCompletedOutput;
+  resultContent.textContent = out == null ? "(none yet)" : (typeof out === 'string' ? out : JSON.stringify(out, null, 2));
+}
+
+function showPanel(){ livePanel.classList.remove('hidden'); }
+function hidePanel(){ livePanel.classList.add('hidden'); }
+function showFinal(){ finalBox.classList.remove('hidden'); historyBtn.classList.remove('hidden'); }
+function hideFinal(){ finalBox.classList.add('hidden'); historyBtn.classList.add('hidden'); }
+function clearFinal(){ finalLabel.textContent = ""; finalRationale.textContent = ""; }
+
+function renderHistory() {
+  historyBox.innerHTML = "";
+  logs.forEach(({step, payload}) => {
+    const card = document.createElement('div');
+    card.className = "p-4 rounded-xl border bg-white";
+    const title = document.createElement('div');
+    title.className = "text-sm font-semibold";
+    title.innerText = "Step: " + step;
+    const pre = document.createElement('pre');
+    pre.className = "text-xs whitespace-pre-wrap mt-2";
+    pre.innerText = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+    card.appendChild(title);
+    card.appendChild(pre);
+    historyBox.appendChild(card);
+  });
+}
+
+historyBtn.addEventListener('click', () => {
+  historyBox.classList.toggle('hidden');
+  if (!historyBox.classList.contains('hidden')) renderHistory();
+});
+
+function isRunningPayload(payload) {
+  return typeof payload === 'string' && payload.toLowerCase().startsWith('running ');
+}
+
+function resetStates() {
+  stepState = Object.fromEntries(STEPS.map(s => [s, "waiting"]));
+  currentRunningStep = null;
+  lastCompletedStep = null;
+  lastCompletedOutput = null;
+  renderStatusRow();
+  renderPanelStatus();
+  renderResultPane();
+}
+
+clearBtn.addEventListener('click', () => {
+  logs = [];
+  resetStates();
+  hidePanel();
+  hideFinal();
+  clearFinal();
+  historyBox.classList.add('hidden');
+  historyBox.innerHTML = "";
+  userInputEl.value = "";
+  if (es) { es.close(); es = null; }
+});
+
+startBtn.addEventListener('click', async () => {
+  logs = [];
+  resetStates();
+  showPanel();
+  hideFinal();
+  clearFinal();
+  historyBox.classList.add('hidden');
+  historyBox.innerHTML = "";
+
+  const text = userInputEl.value.trim();
+  if (!text) { alert("Please enter user input."); return; }
+
+  const resp = await fetch("{{ url_for('pipeline.start') }}", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({user_input: text})
+  });
+  if (!resp.ok) { alert("Failed to start: " + (await resp.text())); return; }
+  const { token } = await resp.json();
+
+  if (es) es.close();
+  es = new EventSource(`{{ url_for('pipeline.stream') }}?token=${encodeURIComponent(token)}`);
+
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'log') {
+        const step = data.step;
+        const payload = data.payload;
+        logs.push({step, payload});
+
+        if (isRunningPayload(payload)) {
+          stepState[step] = "running";
+          currentRunningStep = step;
+          renderStatusRow();
+          renderPanelStatus();
+          if (!lastCompletedStep) renderResultPane();
+        } else {
+          stepState[step] = "done";
+          currentRunningStep = null;
+          lastCompletedStep = step;
+          lastCompletedOutput = payload;
+          renderStatusRow();
+          renderPanelStatus();
+          renderResultPane();
+        }
+      } else if (data.type === 'final') {
+        if (panelTimer) clearTimeout(panelTimer);
+        panelTimer = setTimeout(() => {
+          hidePanel();
+          finalLabel.textContent = data.final_label || "(none)";
+          finalRationale.textContent = data.refined_text || "(no rationale)";
+          showFinal();
+        }, 600);
+        es.close();
+      }
+    } catch (err) {
+      console.error("parse_error", e.data);
+    }
+  };
+
+  es.onerror = () => {
+    console.warn("SSE closed");
+    es.close();
+  };
+});
+</script>
+{% endblock %}
