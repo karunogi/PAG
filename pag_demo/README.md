@@ -39,7 +39,6 @@ UI, comments, and copy are in English.
 ---
 
 ## 🖼 Screenshots
-## 🖼 Screenshots
 
 ### 🔧 Settings Page
 ![Settings Page](docs/images/set_page.png)

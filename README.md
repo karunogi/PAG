@@ -17,6 +17,13 @@ This repository implements a practical, extensible pipeline aligned with the ACL
 
 ---
 
+## 🚀 Try the Local Web Demo
+
+<a href="https://github.com/karunogi/PAG/tree/main/pag_demo">
+  <img src="https://img.shields.io/badge/🚀 Launch_Demo-blueviolet?style=for-the-badge&logo=flask&logoColor=white" alt="Launch Demo">
+</a>
+
+
 ## ✨ Highlights
 
 - **Model-agnostic registries**
