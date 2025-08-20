@@ -11,7 +11,7 @@
 </p>
 
 **PAG (Prediction-Augmented Generation)** combines a Predictive Model (PM) with a Large Language Model (LLM) to produce **knowledge-grounded predictions** and **explanations** from free-form user input.  
-This repository implements a practical, extensible pipeline aligned with the ACL 2025 paper:
+This repository implements a practical, extensible pipeline aligned with the ACL 2025(findings) paper:
 
 > *Prediction-Augmented Generation for Automatic Diagnosis Tasks* (Ju & Lee, 2025)
 
